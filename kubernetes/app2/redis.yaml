@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-pod
+  template:
+    metadata:
+      labels:
+        app: redis-pod
+    spec:
+      containers:
+        - name: redis-con
+          image: redis
+          ports:
+            - containerPort: 6379  # Redis listens on this port
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  type: ClusterIP  # Default type; makes Redis accessible only within the cluster
+  selector:
+    app: redis-pod
+  ports:
+    - protocol: TCP
+      port: 6379        # Service port within the cluster
+      targetPort: 6379  # Forward traffic to Redis container port

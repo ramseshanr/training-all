@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: demon
+  labels:
+    app: demo-app
+spec:
+  selector:
+    matchLabels:
+      app: demo
+  template:
+    metadata:
+      name: demo
+      labels:
+        app: demo
+    spec:
+      containers:
+        - name: demonginx
+          image: nginx
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists

@@ -1,0 +1,133 @@
+---
+- name: Set up Kubernetes Cluster with containerd
+  hosts: mgr,wrk
+  become: true
+  tasks:
+
+    # Update and install dependencies
+    - name: Update apt packages
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+        state: present
+
+    # Install containerd
+    - name: Install containerd
+      apt:
+        name: containerd
+        state: present
+        update_cache: yes
+
+    - name: Ensure containerd is started
+      service:
+        name: containerd
+        state: started
+        enabled: yes
+
+    # Install Kubernetes packages
+    - name: Add Kubernetes apt repository
+      apt_key:
+        url: https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key
+        state: present
+
+    - name: Add Kubernetes repository to sources
+      apt_repository:
+        repo: 'deb https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /'
+        state: present
+
+    - name: Install Kubernetes packages
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+
+    - name: Hold Kubernetes packages at current version
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: fixed
+
+    # Initialize Kubernetes Master Node
+    - name: Initialize Kubernetes master
+      command: kubeadm init 
+      when: inventory_hostname == 'mgr'
+
+    # Set up kubeconfig for the master node
+    - name: Create .kube directory
+      file:
+        path: /home/ubuntu/.kube
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+      when: inventory_hostname == 'mgr'
+
+    - name: Copy kube config to user directory
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/ubuntu/.kube/config
+        remote_src: yes
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+      when: inventory_hostname == 'mgr'
+
+    - name: Set kubeconfig for root on master
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        owner: root
+        group: root
+        mode: '0644'
+      when: inventory_hostname == 'mgr'
+
+    # Install calico network plugin on Master Node
+    - name: Install calico network plugin
+      command: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+      when: inventory_hostname == 'mgr'
+
+    # Get the kubeadm join command and store it for future use
+    - name: Get kubeadm join command
+      command: kubeadm token create --print-join-command
+      register: kubeadm_join_command
+      when: inventory_hostname == 'mgr'
+
+    - name: Set kubeadm join command in facts
+      set_fact:
+        kube_join_command: "{{ kubeadm_join_command.stdout }}"
+      when: inventory_hostname == 'mgr'
+
+
+- name: Join Worker Nodes to Cluster
+  hosts: wrk
+  become: yes
+  tasks:
+    - name: Wait for master to complete join command generation
+      wait_for:
+        host: "{{ hostvars['mgr'].ansible_host }}"
+        port: 6443
+        state: started
+      when: inventory_hostname == 'wrk'
+
+    - name: Check if node is already part of the cluster
+      command: systemctl status kubelet
+      register: kubelet_status
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Join Kubernetes cluster if not already joined
+      command: "{{ hostvars['mgr']['kube_join_command'] }}"
+      when: kubelet_status.rc != 0  # Join only if the node is not part of the cluster

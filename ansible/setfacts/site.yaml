@@ -1,0 +1,10 @@
+---
+- hosts: web
+  vars_files:
+    - "vars/{{name}}.yaml"
+  tasks:
+    - debug: msg="Environment is {{foo}}"
+    - set_fact: myname=testing
+    - debug: msg="name is {{myname}}"
+    - debug: msg="mycar is {{ myvars.f1 }}" 
+       

@@ -1,0 +1,16 @@
+---
+- hosts: con
+  become: yes
+  tasks:
+    - name: install dependecies
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+      #- curl
+      - wget
+      #- httpd
+    - command: ls 
+      register: result1
+    #- command: sleep 60
+    - debug: msg={{ result1.stdout_lines }}

@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-using-pvc
+  namespace: ns01
+spec:
+  selector:
+    matchLabels:
+      app: pod-using-pvc
+  template:
+    metadata:
+      name: pod-using-pvc
+      labels:
+        app: pod-using-pvc
+      namespace: ns01
+    spec:
+     containers:
+      - name: app
+        image: nginx
+        volumeMounts:
+         - mountPath: "/usr/share/nginx/html"
+           name: my-storage
+     volumes:
+      - name: my-storage
+        persistentVolumeClaim:
+         claimName: pvc-example

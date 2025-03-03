@@ -1,0 +1,67 @@
+---
+- name: Setup Kubernetes Cluster
+  hosts: mgr,wrk
+  become: yes
+  tasks:
+    - name: Check if Kubernetes is installed
+      command: which kubeadm
+      register: kubeadm_check
+      ignore_errors: yes
+      changed_when: false
+    - name: Install Kubernetes if not found
+      block:
+        - name: Copy Kubernetes installation script to nodes
+          copy:
+            src: k8sinstall.sh
+            dest: /tmp/k8sinstall.sh
+            mode: '0755'
+        - name: Execute installation script
+          command: bash /tmp/k8sinstall.sh
+      when: kubeadm_check.rc != 0  # Run only if Kubernetes is missing
+- name: Initialize Kubernetes Master Node
+  hosts: mgr
+  become: yes
+  tasks:
+    - name: Check if Kubernetes is already initialized
+      stat:
+        path: /etc/kubernetes/admin.conf
+      register: kubeadm_initialized
+    - name: Initialize Kubernetes Cluster if not already initialized
+      command: kubeadm init
+      register: kubeadm_output
+      when: not kubeadm_initialized.stat.exists
+    - name: Create .kube directory
+      file:
+        path: /home/ubuntu/.kube
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+    - name: Copy kube config to user directory
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/ubuntu/.kube/config
+        remote_src: yes
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+      when: not kubeadm_initialized.stat.exists
+    - name: Generate join command for workers
+      shell: kubeadm token create --print-join-command
+      register: join_command
+      changed_when: false
+    - name: Store join command
+      set_fact:
+        kube_join_command: "{{ join_command.stdout }}"
+- name: Join Worker Nodes to Cluster
+  hosts: wrk
+  become: yes
+  tasks:
+    - name: Check if node is already part of the cluster
+      command: systemctl status kubelet
+      register: kubelet_status
+      ignore_errors: yes
+      changed_when: false
+    - name: Join Kubernetes cluster if not already joined
+      command: "{{ hostvars['mgr']['kube_join_command'] }}"
+      when: kubelet_status.rc != 0  # Join only if the node is not part of the cluster

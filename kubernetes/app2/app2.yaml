@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-redis-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: python-redis-pod
+  template:
+    metadata:
+      labels:
+        app: python-redis-pod
+    spec:
+      containers:
+        - name: python-redis-con
+          image: ramseshanrr/autoscale:v1
+          ports:
+            - containerPort: 8000  # The container is listening on this port 
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-redis-ser
+spec:
+  type: NodePort  # Exposes the service externally
+  selector:
+    app: python-redis-pod
+  ports:
+    - protocol: TCP
+      port: 8000        # Service port that clients connect to
+      targetPort: 8000  # Forward traffic to container's port
+      nodePort: 30080   # Optional: If not specified, Kubernetes will assign a random port (range 30000-32767)                         

@@ -1,0 +1,63 @@
+---
+# tasks file for apache2-v2
+
+    - name: Install Apache
+      apt:
+        name: 
+        - apache2 
+        - curl 
+        - wget 
+        state: present 
+      when: ansible_distribution  == "Ubuntu"
+    - name: Install Httpd
+      yum:
+        name: httpd
+        state: present 
+      when: ansible_distribution  == "Amazon"
+
+
+    - name: copy index for apache2
+      copy: 
+        src: index.html
+        dest: /var/www/html/index.html
+        mode: '0644'
+      #when: ansible_distribution  == "Ubuntu"
+      #notify: Restart apache2
+
+    # - name: updating conf file 
+    #   template: 
+    #     src: apache_vhost.j2
+    #     dest: /etc/apache2/sites-available/000-default.conf
+    #   when: ansible_distribution  == "Ubuntu"
+    #   notify: Restart apache2
+
+    # - name: updating port conf file 
+    #   template: 
+    #     src: ports_conf.j2
+    #     dest: /etc/apache2/ports.conf
+    #   when: ansible_distribution  == "Ubuntu"
+    #   notify: Restart apache2
+
+    - name: Replace a port in the port conf file
+      replace:
+        path: /etc/apache2/ports.conf
+        regexp: 'Listen .*'
+        replace: 'Listen {{ apache_port }}'
+      notify: Restart apache2
+
+    # - name: Replace a port in the port conf file using fileinline
+    #   lineinfile:
+    #     path: /etc/apache2/ports.conf
+    #     regexp: '^Listen'
+    #     line: 'Listen {{ apache_port1 }}'
+
+    - name: updating conf file 
+      template: 
+        src: httpd_conf.j2
+        dest: /etc/httpd/conf/httpd.conf
+      when: ansible_distribution  == "Amazon"
+      notify: Restart httpd
+
+    - name: Print a specific fact (OS version)
+      debug:
+        msg: "The system is running {{ ansible_distribution }} {{ ansible_distribution_version }}"

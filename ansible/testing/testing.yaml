@@ -1,0 +1,192 @@
+
+---
+- name: Install and configure Kubernetes and Docker
+  hosts: all
+  become: yes
+  tasks:
+#     - name: Load containerd kernel modules
+#       block:
+#         - name: Create /etc/modules-load.d/containerd.conf file
+#           copy:
+#             dest: /etc/modules-load.d/containerd.conf
+#             content: |
+#               overlay
+#               br_netfilter
+#             mode: '0644'
+
+#         - name: Load overlay module
+#           modprobe:
+#             name: overlay
+
+#         - name: Load br_netfilter module
+#           modprobe:
+#             name: br_netfilter
+
+#     - name: Configure IPtables settings for Kubernetes
+#       copy:
+#         dest: /etc/sysctl.d/kubernetes.conf
+#         content: |
+#           net.bridge.bridge-nf-call-ip6tables = 1
+#           net.bridge.bridge-nf-call-iptables = 1
+#           net.ipv4.ip_forward = 1
+#         mode: '0644'
+
+#     - name: Apply kernel settings
+#       command: sysctl --system
+
+#     # - name: Add Docker GPG key to trusted keys
+#     #   block:
+#     #     - name: Create keyrings directory
+#     #       file:
+#     #         path: /etc/apt/keyrings
+#     #         state: directory
+#     #         mode: '0755'
+
+#     #     - name: Download Docker GPG key
+#     #       shell: curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+#     # - name: Add Docker repository to sources list
+#     #   copy:
+#     #     dest: /etc/apt/sources.list.d/docker.list
+#     #     content: |
+#     #       deb [arch={{ ansible_architecture }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable
+#     #     mode: '0644'
+
+#     - name: Install containerd.io package
+#       apt:
+#         name: containerd
+#         state: present
+#         update_cache: yes
+
+#     # - name: Configure containerd for systemd Cgroup management
+#     #   block:
+#     #     - name: Create /etc/containerd directory
+#     #       file:
+#     #         path: /etc/containerd
+#     #         state: directory
+#     #         mode: '0755'
+#     #     - name: Create containerd configuration file
+#     #       copy:
+#     #         dest: /etc/containerd/config.toml
+#     #         content: "{{ lookup('file', '/etc/containerd/config.toml') }}"
+
+#     #     - name: Update containerd configuration for systemd cgroups
+#     #       lineinfile:
+#     #         path: /etc/containerd/config.toml
+#     #         regexp: '^SystemdCgroup = false'
+#     #         line: 'SystemdCgroup = true'
+
+#     - name: Reload and restart containerd service
+#       systemd:
+#         name: containerd
+#         state: restarted
+#         enabled: yes
+
+#     - name: Install Kubernetes dependencies
+#       apt:
+#         name:
+#           - apt-transport-https
+#           - ca-certificates
+#           - curl
+#         state: present
+#         update_cache: yes
+
+#     # - name: Add Kubernetes GPG key
+#     #   shell: curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+#     # - name: Add Kubernetes repository to sources list
+#     #   copy:
+#     #     dest: /etc/apt/sources.list.d/kubernetes.list
+#     #     content: |
+#     #       deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /
+#     #     mode: '0644'
+
+#     - name: Install kubelet, kubeadm, kubectl
+#       apt:
+#         name:
+#           - kubelet
+#           - kubeadm
+#           - kubectl
+#         state: present
+#         update_cache: yes
+
+
+#     - name: Enable kubelet service
+#       systemd:
+#         name: kubelet
+#         enabled: yes
+#  # Initialize Kubernetes Master Node
+#     - name: Initialize Kubernetes master
+#       command: kubeadm init 
+#       when: inventory_hostname == 'mgr'
+
+#     # Set up kubeconfig for the master node
+#     - name: Create .kube directory
+#       file:
+#         path: /home/ubuntu/.kube
+#         state: directory
+#         owner: ubuntu
+#         group: ubuntu
+#         mode: '0755'
+#       when: inventory_hostname == 'mgr'
+
+#     - name: Copy kube config to user directory
+#       copy:
+#         src: /etc/kubernetes/admin.conf
+#         dest: /home/ubuntu/.kube/config
+#         remote_src: yes
+#         owner: ubuntu
+#         group: ubuntu
+#         mode: '0644'
+#       when: inventory_hostname == 'mgr'
+#     - name: Copy kube config to root directory
+#       file:
+#             path: /root/.kube/
+#             state: directory
+#             owner: root
+#             group: root
+#             mode: '0644'
+#       when: inventory_hostname == 'mgr'      
+#     - name: Set kubeconfig for root on master
+#       copy:
+#         src: /etc/kubernetes/admin.conf
+#         dest: /root/.kube/config
+#         remote_src: yes
+#         owner: root
+#         group: root
+#         mode: '0644'
+#       when: inventory_hostname == 'mgr'
+
+    # Get the kubeadm join command and store it for future use
+    - name: Get kubeadm join command
+      command: kubeadm token create --print-join-command
+      register: kubeadm_join_command
+      when: inventory_hostname == 'mgr'
+
+    - name: Set kubeadm join command in facts
+      set_fact:
+        kube_join_command: "{{ kubeadm_join_command.stdout }}"
+      when: inventory_hostname == 'mgr'
+
+
+- name: Join Worker Nodes to Cluster
+  hosts: wrk
+  become: yes
+  tasks:
+    - name: Wait for master to complete join command generation
+      wait_for:
+        host: "{{ hostvars['mgr'].ansible_host }}"
+        port: 6443
+        state: started
+      when: inventory_hostname == 'wrk'
+
+    - name: Check if node is already part of the cluster
+      command: systemctl status kubelet
+      register: kubelet_status
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Join Kubernetes cluster if not already joined
+      command: "{{ hostvars['mgr']['kube_join_command'] }}" 
+
+
