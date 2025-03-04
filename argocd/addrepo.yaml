@@ -1,0 +1,65 @@
+---
+
+- name: Add SSH repository to ArgoCD
+  hosts: localhost
+  become: true
+  vars:
+    argocd_url: "3.15.161.37:31047"  # Change to your ArgoCD server URL
+    argocd_username: "admin"  # Replace with your ArgoCD admin username
+    argocd_password: "Password@123"  # Replace with your ArgoCD admin password
+    repo_url: "git@gitlab.stackroute.in:nw-jan-25/h1-ramaseshan-repo.git"  # Replace with your Git SSH URL
+    repo_name: "my-repo"  # Name of the repository in ArgoCD
+    repo_branch: "hackathon1"  # Branch you want to track
+    app_path: "helm/python"
+    ssh_private_key_path: "/home/ubuntu/.ssh/id_rsa"  # SSH private key file path
+    ssh_known_hosts_path: "/home/ubuntu/.ssh/known_hosts"  # Path to your known_hosts file (optional, but recommended for SSH verification)
+    app_name: "my-app"  # Name of the application to be created in ArgoCD
+    app_namespace: "default"  # Kubernetes namespace where the app will be deployed
+    app_project: "default" 
+  
+  tasks:
+    - name: Login to ArgoCD
+      command: >
+        argocd login {{ argocd_url }} --username {{ argocd_username }} --password {{ argocd_password }} --insecure
+      environment:
+        KUBECONFIG: "/home/ubuntu/.kube/config"  # Adjust if you use a custom kubeconfig
+
+    - name: Add SSH-based Git repository to ArgoCD
+      command: >
+        argocd repo add {{ repo_url }} --name {{ repo_name }} --type git --ssh-private-key-path {{ ssh_private_key_path }} --insecure-skip-server-verification
+      environment:
+        KUBECONFIG: "/home/ubuntu/.kube/config"  # Adjust if you use a custom kubeconfig
+
+    - name: Verify the repository was added
+      command: >
+        argocd repo list
+      environment:
+        KUBECONFIG: "/home/ubuntu/.kube/config"  # Adjust if you use a custom kubeconfig
+      register: repo_list
+
+    - name: Show repository list
+      debug:
+        msg: "{{ repo_list.stdout }}"
+    
+    - name: Create an application from the Git repository
+      command: >
+        argocd app create {{ app_name }} \
+        --repo {{ repo_url }} \
+        --revision {{ repo_branch }} \
+        --path {{ app_path }} \
+        --dest-server "https://kubernetes.default.svc" \
+        --dest-namespace "{{ app_namespace }}" \
+        --project "{{ app_project }}"
+      environment:
+        KUBECONFIG: "/home/ubuntu/.kube/config"  # Adjust if you use a custom kubeconfig
+
+    - name: Check the status of the deployed application
+      command: >
+        argocd app get {{ app_name }}
+      environment:
+        KUBECONFIG: "/home/ubuntu/.kube/config"  # Adjust if you use a custom kubeconfig
+      register: app_status
+
+    - name: Show application status
+      debug:
+        msg: "{{ app_status.stdout }}"

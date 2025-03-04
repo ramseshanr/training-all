@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  web:
+    image: nginx:alpine
+    container_name: nginx-container
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./php:/var/www/html
+    ports:
+      - "80:80"
+    depends_on:
+      - php
+    networks:
+      - app-network
+
+  php:
+    build: ./php
+    container_name: php-container
+    volumes:
+      - ./php:/var/www/html
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:alpine
+    container_name: postgres-container
+    environment:
+      POSTGRES_DB: banking_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
